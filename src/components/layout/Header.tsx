@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Icon from "@/components/ui/Icon";
 import { navLinks, site } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ export default function Header() {
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const [progress, setProgress] = useState(0);
+  const progressRef = useRef<HTMLDivElement>(null);
   const [lastPathname, setLastPathname] = useState(pathname);
 
   // Close the mobile drawer whenever the route changes without an effect.
@@ -22,16 +22,35 @@ export default function Header() {
   }
 
   useEffect(() => {
-    const onScroll = () => {
+    let frame = 0;
+
+    const update = () => {
+      frame = 0;
       const top = window.scrollY;
       const height =
         document.documentElement.scrollHeight - window.innerHeight || 1;
-      setScrolled(top > 24);
-      setProgress(Math.min(1, Math.max(0, top / height)));
+
+      // Hysteresis (200px on, 140px off) stops the compact header from
+      // flickering while the page hovers around the trigger point.
+      setScrolled((compact) => (compact ? top > 140 : top > 200));
+
+      if (progressRef.current) {
+        const progress = Math.min(1, Math.max(0, top / height));
+        progressRef.current.style.transform = `scaleX(${progress})`;
+      }
     };
-    onScroll();
+
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(update);
+    };
+
+    update();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+    };
   }, []);
 
   useEffect(() => {
@@ -175,8 +194,9 @@ export default function Header() {
 
         <div className="absolute inset-x-0 bottom-0 h-0.5 bg-transparent">
           <div
-            className="h-full origin-left bg-gradient-to-r from-copper via-gold to-copper transition-transform duration-150"
-            style={{ transform: `scaleX(${progress})` }}
+            ref={progressRef}
+            className="h-full origin-left bg-gradient-to-r from-copper via-gold to-copper will-change-transform"
+            style={{ transform: "scaleX(0)" }}
           />
         </div>
       </header>
